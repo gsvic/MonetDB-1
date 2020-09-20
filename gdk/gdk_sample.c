@@ -101,6 +101,15 @@ do_batsample(BAT *b, BUN n, random_state_engine rse, MT_Lock *lock)
 	BATcheck(b, NULL);
 	ERRORcheck(n > BUN_MAX, "sample size larger than BUN_MAX\n", NULL);
 	cnt = BATcount(b);
+
+	// Total time taken by next()
+	double next_time = 0.0;
+	// Total next() invocations
+	long next_calls = 0L;
+
+	// Total execution time (begin)
+    clock_t total_begin = clock();
+
 	/* empty sample size */
 	if (n == 0) {
 		bn = BATdense(0, 0, 0);
@@ -135,7 +144,10 @@ do_batsample(BAT *b, BUN n, random_state_engine rse, MT_Lock *lock)
 		for (rescnt = 0; rescnt < n; rescnt++) {
 			oid candoid;
 			do {
+			    clock_t start = clock();
 				candoid = minoid + next(rse) % cnt;
+				next_time += (double)(clock() - start);
+				++next_calls;
 				/* if that candidate OID was already
 				 * generated, try again */
 			} while (!OIDTreeMaybeInsert(tree, candoid, rescnt));
@@ -147,6 +159,13 @@ do_batsample(BAT *b, BUN n, random_state_engine rse, MT_Lock *lock)
 		} else {
 			OIDTreeToBATAntiset(tree, bn, minoid, maxoid);
 		}
+
+        double total_end = (double)(clock() - total_begin) / CLOCKS_PER_SEC;
+        next_time /= CLOCKS_PER_SEC;
+		printf("Sample Size,Execution Time,next() Time, next() Calls\n");
+		printf("%ld,%f,%f,%ld\n", n, total_end, next_time, next_calls);
+		printf("next() perc: %f, unnecessary next(): %f\n", 100.0 * next_time / total_end, 100.0 * (next_calls - n) / next_calls);
+
 		GDKfree(tree);
 
 		BATsetcount(bn, slen);
